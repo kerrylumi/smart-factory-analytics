@@ -1,0 +1,44 @@
+input:
+  mqtt:
+    urls: [ "tcp://mosquitto:1883" ]
+    topics: [ "umh/v1/metalfab/#" ]
+    client_id: rp_connect_ingestor
+
+output:
+  broker:
+    pattern: fan_out
+    outputs:
+      # HARU 1: Kõik andmed Parquet failidena (Lake)
+      - file:
+          path: '/data/lake/topic=${! metadata("mqtt_topic").replace("/", "_") }/hour=${! now().format("2006-01-02T15") }/part-${! uuid_v4() }.parquet'
+        processors:
+          - batch:
+              count: 1000
+              period: 30s
+          - parquet:
+              schema:
+                - name: machine_id
+                  type: BYTE_ARRAY
+                  converted_type: UTF8
+                - name: value
+                  type: DOUBLE
+                - name: status
+                  type: BYTE_ARRAY
+                  converted_type: UTF8
+                - name: timestamp
+                  type: BYTE_ARRAY
+                  converted_type: UTF8
+
+      # HARU 2: Ainult teatud topicud andmebaasi (Postgres)
+      - sql_insert:
+          driver: postgres
+          dsn: "postgres://user:password@pgduckdb:5432/database?sslmode=disable"
+          table: "staging.raw_factory_data"
+          columns: [ "topic", "payload" ]
+          args_mapping: 'root = [ metadata("mqtt_topic"), this.encode("json") ]'
+        processors:
+          - filter_out:
+              not:
+                or:
+                  - check: 'metadata("mqtt_topic").contains("_state")'
+                  - check: 'metadata("mqtt_topic").contains("power_kw")'
