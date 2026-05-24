@@ -63,7 +63,7 @@ flowchart LR
 | Roll | Vastutus | Täitja |
 |------|----------|--------|
 | Metalfab MQTT omanik  | Kirjutab sissevõtu loogika, hoiab andmevoo töös | Kerry Lumi |
-|Elering API omanik | Kirjutab sissevõtu loogika, hoiab andmevoo töös | [Nimi]
+| Elering API omanik | Kirjutab sissevõtu loogika, hoiab andmevoo töös | Erki Ohmann |
 | Transformatsioonide omanik | Kirjutab mart kihi mudelid ja mõõdikute arvutuse | Erki Ohmann/Kerry Lumi |
 | Kvaliteedi omanik | Kirjutab testid ja vaatab läbi ebaõnnestunud kontrollid | Kärt Kesküla |
 | Näidikulaua omanik | Ehitab näidikulaua ja seob selle äriküsimusega | Kärt Kesküla |
