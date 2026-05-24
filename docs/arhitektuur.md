@@ -25,31 +25,29 @@ Kuidas masinate seisuajad ja elektrihinna kõikumised mõjutavad toodangu omahin
 
 ```mermaid
 flowchart LR
-    SIM[metalfab-simulator] -->|MQTT 1883| HM[HiveMQ CE]
-    HM -->|subscribe| BN[Benthos]
-    BN -->|atomic Parquet write| LAKE[(/data/lake<br/>topic=*/hour=*/part-*.parquet)]
-    EL[Elering NPS API] -->|HTTPS hourly| AF1[Airflow:<br/>elering_ingest]
-    AF1 --> EP[(bronze.br_electricity_prices)]
-    LAKE -.->|read_parquet<br/>incremental| BR1[(bronze.br_states)]
-    LAKE -.->|read_parquet<br/>incremental| BR2[(bronze.br_telemetry)]
-    BR1 --> SLV[silver views]
-    BR2 --> SLV
-    EP --> SLV
-    AF2[Airflow:<br/>dbt bronze every 2 min<br/>dbt silver+gold hourly] --> BR1
-    AF2 --> BR2
-    AF2 --> SLV
-    SLV --> G1[(gold.g_oee_hourly)]
-    SLV --> G2[(gold.g_planned_downtime_cost)]
-    SLV --> G3[(gold.g_batch_unit_cost)]
-    SLV --> G4[(gold.v_oee_live<br/>view)]
-    G1 --> SUP[Superset Dashboard]
-    G2 --> SUP
-    G3 --> SUP
-    G4 --> SUP
-    LAKE -.->|stretch: readStream| SP[Spark SS]
-    SP --> G5[(gold.g_batch_energy)]
-    G5 --> SUP
-    AF2 --> T[quality.test_results]
+    subgraph Allikad
+        SIM[metalfab-simulator<br/>PackML olekud + telemeetria]
+        EL[Elering NPS API<br/>börsihind]
+    end
+
+    subgraph Sissevõtt
+        SIM -->|MQTT| HM[HiveMQ CE]
+        HM --> BN[Benthos<br/>Parquet write]
+        EL -->|HTTPS| ING[Airflow DAG<br/>elering_ingest]
+    end
+
+    BN --> BR[(Bronze<br/>raw tabelid<br/>pgDuckDB read_parquet)]
+    ING --> BR
+    BR --> SLV[(Silver<br/>puhastatud view'd)]
+    SLV --> GLD[(Gold<br/>star-skeem<br/>OEE • Energy • Downtime)]
+    GLD --> SUP[Superset Dashboard]
+
+    subgraph Orkestreerimine ja kvaliteet
+        AF[Airflow<br/>dbt run + test]
+    end
+    AF -.orkestreerib.-> BR
+    AF -.orkestreerib.-> SLV
+    AF -.orkestreerib.-> GLD
 ```
 
 ## Andmebaasi kihid
