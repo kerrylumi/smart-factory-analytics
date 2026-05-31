@@ -157,6 +157,21 @@ ENV/
 env.bak/
 venv.bak/
 
+# Docker compose lokaalne override (port'id, dev-spetsiifika)
+compose.override.yml
+compose.override.yaml
+
+# Airflow logifailid
+logs/
+
+# dbt build artefaktid
+dbt_project/target/
+dbt_project/dbt_packages/
+dbt_project/logs/
+
+# Andmejärv (Benthos kirjutab Parquet'e siia)
+data/lake/
+
 # Spyder project settings
 .spyderproject
 .spyproject

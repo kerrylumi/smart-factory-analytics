@@ -1,0 +1,17 @@
+name: smart_factory
+version: "1.0.0"
+profile: smart_factory
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  smart_factory:
+    silver:
+      +materialized: view
+      +schema: silver
+    gold:
+      +materialized: table
+      +schema: gold

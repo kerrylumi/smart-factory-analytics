@@ -1,0 +1,23 @@
+version: 2
+
+models:
+  - name: silver_electricity_prices
+    description: Eesti elektrihind UTC ja EEST ajatempelistega + EUR/kWh.
+    columns:
+      - name: ts_utc
+        description: 15-min vahemiku algus UTC-s.
+        data_tests:
+          - not_null
+          - unique
+      - name: ts_eest
+        description: Sama ajatempel Europe/Tallinn ajavööndis.
+        data_tests:
+          - not_null
+      - name: price_eur_mwh
+        description: Päevahind EUR/MWh-s.
+        data_tests:
+          - not_null
+      - name: price_eur_kwh
+        description: Päevahind EUR/kWh-s (= MWh / 1000).
+        data_tests:
+          - not_null

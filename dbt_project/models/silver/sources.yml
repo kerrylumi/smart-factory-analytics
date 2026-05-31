@@ -1,0 +1,16 @@
+version: 2
+
+sources:
+  - name: bronze
+    schema: bronze
+    description: Raw andmed allikatest — Airflow DAG-id kirjutavad otse siia.
+    tables:
+      - name: br_electricity_prices
+        description: Elering NPS 15-min elektrihinnad EUR/MWh-s (ee/fi/lv/lt).
+        columns:
+          - name: country
+            description: Riigi kood ('ee' | 'fi' | 'lv' | 'lt').
+          - name: ts_utc
+            description: 15-min vahemiku algus UTC-s.
+          - name: price_eur_mwh
+            description: Päevahind EUR/MWh-s.
