@@ -73,7 +73,7 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql
-      - ./data/lake:/data/lake
+      - ${DATA_DIR:-./data/}:/data/
       - ./init:/docker-entrypoint-initdb.d
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER}" ]
@@ -228,7 +228,7 @@ services:
     volumes:
       - superset-db-volume:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${SUPERSET_DB_USER:-superset} -d ${SUPERSET_DB_NAME:-superset_meta}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${SUPERSET_DB_USER:-superset} -d ${SUPERSET_DB_NAME:-superset_meta}" ]
       interval: 5s
       retries: 10
     restart: always
@@ -276,8 +276,23 @@ services:
       SUPERSET_CONFIG_PATH: /app/superset_config.py
       DATABASE_URI: "postgresql+psycopg2://${SUPERSET_DB_USER:-superset}:${SUPERSET_DB_PASSWORD:-superset}@superset-db:5432/${SUPERSET_DB_NAME:-superset_meta}"
       SECRET_KEY: ${SUPERSET_SECRET_KEY}
-    command: ["/app/docker/entrypoints/run-server.sh"]
+    command: [ "/app/docker/entrypoints/run-server.sh" ]
     restart: always
+
+  jupyter:
+    image: quay.io/jupyter/pyspark-notebook:latest
+    container_name: metalfab-jupyter
+    ports:
+      - "8888:8888" # Jupyteri kasutajaliides
+      - "4040:4040" # Spark UI (uue SparkContexti loomisel võib pordinumber suureneda)
+    volumes:
+      - ./notebooks/:/home/jovyan/work
+      - ${DATA_DIR:-./data/}:/home/jovyan/data
+    environment:
+      - JUPYTER_TOKEN=${JUPYTER_TOKEN:-praktikum}
+    #      - PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.1,io.delta:delta-spark_2.13:4.2.0 pyspark-shell
+    command: >
+      start-notebook.py --ServerApp.token=${JUPYTER_TOKEN:-praktikum} --ServerApp.password='' --ServerApp.allow_origin='*' --ServerApp.allow_remote_access=True
 
 #networks:
 #  umh-network:
