@@ -52,14 +52,10 @@ COUNTRIES = ["ee", "fi", "lv", "lt"]
 
 
 def _db_conn():
-    """Loob psycopg2 ühenduse otse env'idest.
-
-    NB: compose.yml seab `POSTGRES_HOST=analytics-db`, aga teenuse-nimi on `db`.
-    Kuni see ei ole parandatud, hardcode'ime `host="db"`. Sprint 3-s tagasi env'ile.
-    """
+    """Loob psycopg2 ühenduse pgDuckDB analüütika andmebaasiga (teenus `db`)."""
     return psycopg2.connect(
-        host="db",
-        port=5432,
+        host=os.environ.get("POSTGRES_HOST", "db"),
+        port=int(os.environ.get("POSTGRES_PORT", "5432")),
         user=os.environ.get("POSTGRES_USER", "praktikum"),
         password=os.environ.get("POSTGRES_PASSWORD", "praktikum"),
         dbname=os.environ.get("POSTGRES_DB", "praktikum"),

@@ -1,6 +1,6 @@
 input:
   mqtt:
-    urls: [ "tcp://192.168.99.119:1883" ]
+    urls: [ "tcp://hivemq:1883" ]
     topics: [ "umh/v1/metalfab/eindhoven/+/+/_raw/#" ]
     client_id: rp_connect_ingestor
 

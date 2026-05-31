@@ -17,7 +17,7 @@ Kuidas masinate seisuajad ja elektrihinna kõikumised mõjutavad toodangu omahin
 | Allikas                                       | Tüüp                        | Ajas muutuv?               | Roll                                                                                    |
 | --------------------------------------------- | --------------------------- | -------------------------- | --------------------------------------------------------------------------------------- |
 | `metalfab-uns-simulator` (Eindhoven, Level 4) | MQTT  | Jah, ~5s  |  masina sensorid, olekud, tükiloendurid, jne |
-| Elering NPS API                               | HTTPS  | Jah, 1x ööpäevas              | börsi elektrihind €/MWh |
+| Elering NPS API                               | HTTPS  | Jah, 15-min lahutus (NPS turg liikus 2025-st tunnipõhiselt 15-min lahutusele); API päring 1x ööpäevas | börsi elektrihind €/MWh |
 | `seeds/masinad.csv`                           | dbt seed (staatiline)       | Ei                         | Masinate metaandmed |
 | `seeds/toote_info.csv`                        | dbt seed (staatiline)       | Ei                         | Toote metaandmed|
 
@@ -32,13 +32,16 @@ flowchart LR
 
     subgraph Sissevõtt
         SIM -->|MQTT| HM[HiveMQ CE]
-        HM --> BN[Benthos<br/>Parquet write]
+        HM --> RPC[Redpanda Connect<br/>JSON write]
         EL -->|HTTPS| ING[Airflow DAG<br/>elering_ingest]
     end
 
-    BN --> BR[(Bronze<br/>raw tabelid<br/>pgDuckDB read_parquet)]
-    ING --> BR
-    BR --> SLV[(Silver<br/>puhastatud view'd)]
+    RPC --> LAKE[(data/lake<br/>Hive-partitioned JSON)]
+    LAKE --> SPK[Jupyter PySpark<br/>Structured Streaming]
+    SPK --> STG[(bronze.raw_factory_data)]
+    ING --> BR[(Bronze<br/>br_electricity_prices)]
+    STG --> SLV[(Silver<br/>puhastatud view'd)]
+    BR --> SLV
     SLV --> GLD[(Gold<br/>star-skeem<br/>OEE • Energy • Downtime)]
     GLD --> SUP[Superset Dashboard]
 
@@ -52,9 +55,9 @@ flowchart LR
 
 ## Andmebaasi kihid
 
-- `bronze` — **incremental tabelid** parquet-failidest
-- `silver` — **view'd**, bronze tabelite pealt
-- `gold` — **star skeem** agregeeritud andmed visuaalide ja KPI-de jaoks,
+- `bronze` — **toorandmete tabelid**, kuhu sissevõtu kihid kirjutavad otse: Airflow DAG (`br_electricity_prices`, psycopg2 INSERT) ja Jupyter PySpark Structured Streaming (`raw_factory_data`, JDBC microbatch'id `data/lake/` JSON-failidest)
+- `silver` — **view'd** bronze tabelite pealt (ajavööndi/üksuste teisendused, NULL-filtrid, denormaliseerimine)
+- `gold` — **star skeemi tabelid** agregeeritud KPI-de jaoks (OEE, energiakulu, downtime cost)
 
 ## Tööjaotus
 

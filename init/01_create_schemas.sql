@@ -1,8 +1,8 @@
 -- Loob bronze/silver/gold skeemid ja bronze raw tabelid.
--- See fail aktiveerub automaatselt esimesel db-konteineri käivitusel
--- AINULT siis, kui compose.yml-i `db` teenusel on volume:
---     ./init:/docker-entrypoint-initdb.d
--- Praegu pole see volume veel lisatud — DAG ise tagab CREATE IF NOT EXISTS.
+-- Aktiveerub automaatselt esimesel db-konteineri käivitusel,
+-- kuna compose.yml mountib `./init:/docker-entrypoint-initdb.d`.
+-- DAG `ensure_schema` task tagab sama tulemuse idempotentselt,
+-- nii et töövoog töötab ka juba initsialiseeritud volume'i puhul.
 
 CREATE SCHEMA IF NOT EXISTS bronze;
 CREATE SCHEMA IF NOT EXISTS silver;

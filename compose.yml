@@ -14,9 +14,9 @@ x-airflow-common: &airflow-common
     AIRFLOW__API_AUTH__JWT_ISSUER: ${AIRFLOW__API_AUTH__JWT_ISSUER:-airflow}
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
     # Rakenduse andmebaasi ühendus — kasutatav DAG-ides PostgresHook kaudu
-    AIRFLOW_CONN_ANALYTICS_DB: postgresql://${POSTGRES_USER:-praktikum}:${POSTGRES_PASSWORD:-praktikum}@analytics-db:5432/${POSTGRES_DB:-praktikum}
+    AIRFLOW_CONN_ANALYTICS_DB: postgresql://${POSTGRES_USER:-praktikum}:${POSTGRES_PASSWORD:-praktikum}@db:5432/${POSTGRES_DB:-praktikum}
     # dbt ühenduseparameetrid (dbt profiles.yml kasutab neid)
-    POSTGRES_HOST: analytics-db
+    POSTGRES_HOST: db
     POSTGRES_PORT: "5432"
     POSTGRES_USER: ${POSTGRES_USER:-praktikum}
     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-praktikum}
@@ -73,7 +73,7 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql
-      - ${DATA_DIR:-./data/}:/data/
+      - ${DATA_DIR:-./data}:/data
       - ./init:/docker-entrypoint-initdb.d
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER}" ]
@@ -105,7 +105,7 @@ services:
     image: docker.redpanda.com/redpandadata/connect
     volumes:
       - ./config/redpanda-connect.yaml:/connect.yaml
-      - ./data/lake:/data/lake # Kohalik ./data/lake mäpitakse konteinerisse
+      - ${DATA_DIR:-./data}/lake:/data/lake
     command: [ "-c", "/connect.yaml" ]
     depends_on:
       - hivemq
@@ -287,7 +287,7 @@ services:
       - "4040:4040" # Spark UI (uue SparkContexti loomisel võib pordinumber suureneda)
     volumes:
       - ./notebooks/:/home/jovyan/work
-      - ${DATA_DIR:-./data/}:/home/jovyan/data
+      - ${DATA_DIR:-./data}:/home/jovyan/data
     environment:
       - JUPYTER_TOKEN=${JUPYTER_TOKEN:-praktikum}
     #      - PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.1,io.delta:delta-spark_2.13:4.2.0 pyspark-shell

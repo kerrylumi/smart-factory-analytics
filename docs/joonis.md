@@ -7,13 +7,16 @@ flowchart LR
 
     subgraph Sissevõtt
         SIM -->|MQTT| HM[HiveMQ CE]
-        HM --> BN[Benthos<br/>Parquet write]
+        HM --> RPC[Redpanda Connect<br/>JSON write]
         EL -->|HTTPS| ING[Airflow DAG<br/>elering_ingest]
     end
 
-    BN --> BR[(Bronze<br/>raw tabelid<br/>pgDuckDB read_parquet)]
-    ING --> BR
-    BR --> SLV[(Silver<br/>puhastatud view'd)]
+    RPC --> LAKE[(data/lake<br/>Hive-partitioned JSON)]
+    LAKE --> SPK[Jupyter PySpark<br/>Structured Streaming]
+    SPK --> RFD[(bronze.raw_factory_data)]
+    ING --> BR[(Bronze<br/>br_electricity_prices)]
+    RFD --> SLV[(Silver<br/>puhastatud view'd)]
+    BR --> SLV
     SLV --> GLD[(Gold<br/>star-skeem<br/>OEE • Energy • Downtime)]
     GLD --> SUP[Superset Dashboard]
 
