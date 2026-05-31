@@ -74,6 +74,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql
       - ./data/lake:/data/lake
+      - ./init:/docker-entrypoint-initdb.d
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER}" ]
       interval: 5s
@@ -216,6 +217,68 @@ services:
       _PIP_ADDITIONAL_REQUIREMENTS: ''
     user: "0:0"
 
+  # --- Superset metaandmebaas ---
+  superset-db:
+    image: postgres:16
+    container_name: metalfab-superset-db
+    environment:
+      POSTGRES_USER: ${SUPERSET_DB_USER:-superset}
+      POSTGRES_PASSWORD: ${SUPERSET_DB_PASSWORD:-superset}
+      POSTGRES_DB: ${SUPERSET_DB_NAME:-superset_meta}
+    volumes:
+      - superset-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${SUPERSET_DB_USER:-superset} -d ${SUPERSET_DB_NAME:-superset_meta}"]
+      interval: 5s
+      retries: 10
+    restart: always
+
+  # --- Superset ühekordne initsialiseerimine (migratsioonid + admin kasutaja) ---
+  superset-init:
+    build:
+      context: .
+      dockerfile: Dockerfile.superset
+    container_name: metalfab-superset-init
+    depends_on:
+      superset-db:
+        condition: service_healthy
+    volumes:
+      - ./superset/superset_config.py:/app/superset_config.py
+      - superset-home:/app/superset_home
+    environment:
+      SUPERSET_CONFIG_PATH: /app/superset_config.py
+      DATABASE_URI: "postgresql+psycopg2://${SUPERSET_DB_USER:-superset}:${SUPERSET_DB_PASSWORD:-superset}@superset-db:5432/${SUPERSET_DB_NAME:-superset_meta}"
+      SECRET_KEY: ${SUPERSET_SECRET_KEY}
+      ADMIN_USERNAME: ${SUPERSET_ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-admin}
+      ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL:-admin@example.com}
+    command:
+      - /bin/sh
+      - -c
+      - "superset db upgrade && superset fab create-admin --username $${ADMIN_USERNAME} --firstname Admin --lastname User --email $${ADMIN_EMAIL} --password $${ADMIN_PASSWORD} && superset init"
+    restart: "no"
+
+  # --- Apache Superset näidikulaud ---
+  superset:
+    build:
+      context: .
+      dockerfile: Dockerfile.superset
+    container_name: metalfab-superset
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
+    ports:
+      - "${SUPERSET_PORT_HOST:-8088}:8088"
+    volumes:
+      - ./superset/superset_config.py:/app/superset_config.py
+      - superset-home:/app/superset_home
+    environment:
+      SUPERSET_CONFIG_PATH: /app/superset_config.py
+      DATABASE_URI: "postgresql+psycopg2://${SUPERSET_DB_USER:-superset}:${SUPERSET_DB_PASSWORD:-superset}@superset-db:5432/${SUPERSET_DB_NAME:-superset_meta}"
+      SECRET_KEY: ${SUPERSET_SECRET_KEY}
+    command: ["/app/docker/entrypoints/run-server.sh"]
+    restart: always
+
 #networks:
 #  umh-network:
 #    #external: true
@@ -225,3 +288,5 @@ services:
 volumes:
   pgdata:
   airflow-db-volume:
+  superset-db-volume:
+  superset-home:
