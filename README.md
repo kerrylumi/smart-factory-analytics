@@ -1,4 +1,4 @@
-# Grupp 7 — Smart Factory Analytics
+# Smart Factory Analytics
 
 Metallitööstuse tehase reaalaja telemeetria ja elektri börsihinna ühendamine OEE-ja kuluanalüüsiks.
 
