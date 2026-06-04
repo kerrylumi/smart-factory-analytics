@@ -123,3 +123,25 @@ models:
         description: Energia maksumus tüki kohta (spot-hinnaga) EUR.
         data_tests:
           - not_null
+
+  - name: gold_downtime
+    description: >
+      Seisakute jaotus PackML state-koodide kaupa (aja-kaalutud kestus). Downtime =
+      mitte-EXECUTE olekud (state_code <> 3). Grain: masin × päev × olek.
+    columns:
+      - name: machine
+        description: Masina ID.
+        data_tests:
+          - not_null
+      - name: paev
+        description: Päev.
+        data_tests:
+          - not_null
+      - name: state_nimi
+        description: Inimloetav PackML oleku nimi.
+        data_tests:
+          - not_null
+      - name: kestus_s
+        description: Olekus veedetud aeg sekundites.
+        data_tests:
+          - not_null
