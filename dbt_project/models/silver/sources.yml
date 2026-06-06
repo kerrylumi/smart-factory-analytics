@@ -14,3 +14,18 @@ sources:
             description: 15-min vahemiku algus UTC-s.
           - name: price_eur_mwh
             description: Päevahind EUR/MWh-s.
+      - name: raw_factory_data
+        description: >
+          Tehase telemeetria long/EAV-formaadis — üks rida iga mõõdiku kohta.
+          Spark Structured Streaming microbatch andmejärvest (data/lake) JDBC-ga.
+        columns:
+          - name: dept
+            description: Osakond (cutting | forming | finishing | assembly | warehouse | energy).
+          - name: machine
+            description: Masina ID (nt press_brake_01, laser_01).
+          - name: tag
+            description: Mõõdiku nimi (nt state, parts_produced, parts_scrap, consumption_kw).
+          - name: timestamp
+            description: Mõõtmise ajatempel UTC-s.
+          - name: value
+            description: Numbriline väärtus (DOUBLE — string-tag'id nagu state_name tulevad NULL-ina).

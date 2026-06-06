@@ -8,7 +8,7 @@ Kuidas masinate seisuajad ja elektrihinna kõikumised mõjutavad toodangu omahin
 
  Peamised mõõdikud (KPI-d):
 - **OEE (Overall Equipment Effectiveness):** Arvutatud reaalajas masina olekute (Running, Idle, Fault) ja tükitoodangu põhjal.
-- **Tootmisühiku energiakulu (€):** Masina reaalne võimsustarbimine (kW) korrutatud börsihinnaga (€/MWh).
+- **Tootmisühiku energiakulu (€):** Võimsustarbimine (kW) korrutatud börsihinnaga (€/MWh). *Märkus: simulaator väljastab energiatarbe ainult kogu tehase tasemel (mitte masinapõhiselt), seega energiakulu arvutatakse tehase tasemel.*
 - **Seisuaja kulu (Downtime Cost):** Rahaline kaotus, mis tuleneb plaanivälisest seisakust.
 - **Tootmise tasuvuse tagantjärele analüüs:** Arvutab tagantjärele kokku summaarse rahalise kahjumi, mis tekkis tundidel, mil elektri börsihind muutis toote omahinna kõrgemaks kui kliendile lubatud müügihind. 
 
@@ -18,8 +18,7 @@ Kuidas masinate seisuajad ja elektrihinna kõikumised mõjutavad toodangu omahin
 | --------------------------------------------- | --------------------------- | -------------------------- | --------------------------------------------------------------------------------------- |
 | `metalfab-uns-simulator` (Eindhoven, Level 4) | MQTT  | Jah, ~5s  |  masina sensorid, olekud, tükiloendurid, jne |
 | Elering NPS API                               | HTTPS  | Jah, 15-min lahutus (NPS turg liikus 2025-st tunnipõhiselt 15-min lahutusele); API päring 1x ööpäevas | börsi elektrihind €/MWh |
-| `seeds/masinad.csv`                           | dbt seed (staatiline)       | Ei                         | Masinate metaandmed |
-| `seeds/toote_info.csv`                        | dbt seed (staatiline)       | Ei                         | Toote metaandmed|
+| `seeds/ideal_cycle_rates.csv`                 | dbt seed (staatiline)       | Ei                         | Masinatüübi ideaalne tootmiskiirus (tükki/h) — OEE Performance baasmäär |
 
 ## Andmevoog
 
@@ -56,8 +55,13 @@ flowchart LR
 ## Andmebaasi kihid
 
 - `bronze` — **toorandmete tabelid**, kuhu sissevõtu kihid kirjutavad otse: Airflow DAG (`br_electricity_prices`, psycopg2 INSERT) ja Jupyter PySpark Structured Streaming (`raw_factory_data`, JDBC microbatch'id `data/lake/` JSON-failidest)
-- `silver` — **view'd** bronze tabelite pealt (ajavööndi/üksuste teisendused, NULL-filtrid, denormaliseerimine)
-- `gold` — **star skeemi tabelid** agregeeritud KPI-de jaoks (OEE, energiakulu, downtime cost)
+- `silver` — **view'd** bronze tabelite pealt: `silver_electricity_prices` (UTC → Europe/Tallinn, EUR/MWh → EUR/kWh) ja `silver_factory_telemetry` (tehase telemeetria long-formaadis, NULL-filter + Tallinna ajatempel)
+- `gold` — **star skeemi tabelid** agregeeritud KPI-de jaoks, arvutatud masinate toorsignaalidest:
+  - **OEE** minuti kaupa jooksva kumulatiivina — `gold_oee` (= `gold_oee_availability` × `gold_oee_performance` × `gold_oee_quality`)
+  - **Energiakulu** Eleringi reaalsete spot-hindadega — `gold_energy`, `gold_energy_per_part` (€/tükk)
+  - **Seisakute jaotus** PackML olekute kaupa minuti kaupa — `gold_downtime`
+
+  Gold uueneb automaatselt DAG-iga `dbt_gold_refresh` (iga 5 min, `dbt run + test --select +gold`).
 
 ## Tööjaotus
 

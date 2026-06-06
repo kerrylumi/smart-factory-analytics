@@ -15,3 +15,7 @@ models:
     gold:
       +materialized: table
       +schema: gold
+
+seeds:
+  smart_factory:
+    +schema: gold

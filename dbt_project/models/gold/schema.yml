@@ -1,0 +1,149 @@
+version: 2
+
+models:
+  - name: gold_oee_availability
+    description: >
+      OEE komponent Availability = run_time / planned_time. Arvutatud toorsignaalist
+      `state` aja-kaalutult (LEAD), JOOKSEV KUMULATIIVNE. Grain: masin × minut.
+    columns:
+      - name: machine
+        description: Masina ID.
+        data_tests:
+          - not_null
+      - name: minut
+        description: Minut (date_trunc).
+        data_tests:
+          - not_null
+      - name: availability
+        description: Saadavus 0–1.
+        data_tests:
+          - not_null
+
+  - name: gold_oee_quality
+    description: >
+      OEE komponent Quality = (produced - scrap) / produced. Loendurite minutipõhine
+      juurdekasv (delta), siis JOOKSEV KUMULATIIVNE. Grain: masin × minut.
+    columns:
+      - name: machine
+        data_tests:
+          - not_null
+      - name: minut
+        data_tests:
+          - not_null
+      - name: quality
+        description: Kvaliteet 0–1.
+        data_tests:
+          - not_null
+
+  - name: gold_oee_performance
+    description: >
+      OEE komponent Performance = produced / (run_h × ideaalmäär), JOOKSEV KUMULATIIVNE.
+      Ideaalmäär seemnest ideal_cycle_rates masinatüübi kaupa. Grain: masin × minut.
+    columns:
+      - name: machine
+        data_tests:
+          - not_null
+      - name: minut
+        data_tests:
+          - not_null
+      - name: performance
+        description: Jõudlus 0–1.
+        data_tests:
+          - not_null
+
+  - name: gold_oee
+    description: >
+      OEE = Availability × Performance × Quality, arvutatud masinate toorsignaalidest
+      (mitte simulaatori eelarvutatud oee.* tag'idest). JOOKSEV KUMULATIIVNE live-trend.
+      Grain: masin × minut.
+    columns:
+      - name: machine
+        data_tests:
+          - not_null
+      - name: minut
+        data_tests:
+          - not_null
+      - name: availability
+        data_tests:
+          - not_null
+      - name: performance
+        data_tests:
+          - not_null
+      - name: quality
+        data_tests:
+          - not_null
+      - name: oee
+        description: Liit-OEE 0–1.
+        data_tests:
+          - not_null
+
+  - name: gold_energy
+    description: >
+      Tehase energiakulu Eleringi REAALSETE spot-hindade põhjal (mitte simulaatori
+      daily_cost_eur). Ristab tehase võimsuse (kW→kWh) ja Eleringi 15-min hinna.
+      Grain: 15-min plokk.
+    columns:
+      - name: ts_utc
+        description: 15-min ploki algus UTC-s (ühildub Eleringi plokkidega).
+        data_tests:
+          - not_null
+          - unique
+      - name: ts_eest
+        description: Sama plokk Europe/Tallinn ajavööndis.
+        data_tests:
+          - not_null
+      - name: price_eur_kwh
+        description: Eleringi spot-hind EUR/kWh-s.
+        data_tests:
+          - not_null
+      - name: grid_cost_eur
+        description: Tegelik arve = võrgust import (kWh) × spot-hind.
+        data_tests:
+          - not_null
+
+  - name: gold_energy_per_part
+    description: >
+      Energiakulu ühe valmistatud tüki kohta (Specific Energy Consumption). Tehase
+      tarve (kWh) ÷ toodetud tükid 15-min plokis + €/tükk Eleringi spot-hinnaga.
+      Grain: 15-min plokk (ainult plokid kus tooteti).
+    columns:
+      - name: ts_utc
+        description: 15-min ploki algus UTC-s.
+        data_tests:
+          - not_null
+          - unique
+      - name: parts
+        description: Tükkide juurdekasv plokis (kõik masinad kokku).
+        data_tests:
+          - not_null
+      - name: kwh_per_part
+        description: Füüsiline energiaintensiivsus kWh/tükk.
+        data_tests:
+          - not_null
+      - name: cost_per_part_eur
+        description: Energia maksumus tüki kohta (spot-hinnaga) EUR.
+        data_tests:
+          - not_null
+
+  - name: gold_downtime
+    description: >
+      Seisakute jaotus PackML state-koodide kaupa (aja-kaalutud kestus, minuti lõikes).
+      Downtime = mitte-EXECUTE olekud (state_code <> 3). Augu-kaitse: >120s intervallid
+      (andmeaugud) ignoreeritud. Grain: masin × minut × olek (mitte-kumulatiivne).
+    columns:
+      - name: machine
+        description: Masina ID.
+        data_tests:
+          - not_null
+      - name: minut
+        description: Minut (date_trunc).
+        data_tests:
+          - not_null
+      - name: state_nimi
+        description: Inimloetav PackML oleku nimi.
+        data_tests:
+          - not_null
+      - name: kestus_s
+        description: Olekus veedetud aeg sekundites (selles minutis).
+        data_tests:
+          - not_null

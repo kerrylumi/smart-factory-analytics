@@ -1,0 +1,6 @@
+machine_type,parts_per_hour
+laser_cutter,30
+press_brake,45
+assembly,25
+powder_coating_line,15
+agv,60
