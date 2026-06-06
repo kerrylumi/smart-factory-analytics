@@ -127,15 +127,16 @@ models:
 
   - name: gold_downtime
     description: >
-      Seisakute jaotus PackML state-koodide kaupa (aja-kaalutud kestus). Downtime =
-      mitte-EXECUTE olekud (state_code <> 3). Grain: masin × päev × olek.
+      Seisakute jaotus PackML state-koodide kaupa (aja-kaalutud kestus, minuti lõikes).
+      Downtime = mitte-EXECUTE olekud (state_code <> 3). Augu-kaitse: >120s intervallid
+      (andmeaugud) ignoreeritud. Grain: masin × minut × olek (mitte-kumulatiivne).
     columns:
       - name: machine
         description: Masina ID.
         data_tests:
           - not_null
-      - name: paev
-        description: Päev.
+      - name: minut
+        description: Minut (date_trunc).
         data_tests:
           - not_null
       - name: state_nimi
@@ -143,6 +144,6 @@ models:
         data_tests:
           - not_null
       - name: kestus_s
-        description: Olekus veedetud aeg sekundites.
+        description: Olekus veedetud aeg sekundites (selles minutis).
         data_tests:
           - not_null

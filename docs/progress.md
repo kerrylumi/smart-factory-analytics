@@ -34,6 +34,35 @@
 - **Dashboard'i laiendamine** täis-KPI komplektiga (OEE, tootmisühiku energiakulu, seisuaja kulu) + dbt testide laiendamine bronze ja gold kihile
 - README täielik versioon kursuse malli järgi
 
+---
+
+# Edenemisraport — Sprint 3 (01.06–06.06)
+
+## Mis on valmis
+
+- [x] **MQTT bronze tabel dbt-source'ina:** `bronze.raw_factory_data` registreeritud `sources.yml`-i; silver-view `silver_factory_telemetry` puhastab telemeetria long-formaadis (NULL-filter + Europe/Tallinn ajatempel)
+- [x] **dbt gold-kiht valmis** — star-skeemi tabelid masinate toorsignaalidest (mitte simulaatori eelarvutatud `oee.*` tag'idest):
+  - `gold_oee_availability` — Availability = run_time / planned_time, jooksev kumulatiivne minuti kaupa
+  - `gold_oee_performance` — Performance = toodetud / (run_h × ideaalmäär); ideaalmäär seemnest `ideal_cycle_rates`
+  - `gold_oee_quality` — Quality = (toodetud − praak) / toodetud, loendurite delta kumulatiivina
+  - `gold_oee` — liit-OEE = Availability × Performance × Quality, live-trend minuti kaupa
+  - `gold_energy` + `gold_energy_per_part` — energiakulu Eleringi REAALSETE spot-hindadega (€ ja €/tükk)
+  - `gold_downtime` — seisakute jaotus PackML olekute kaupa, minuti kaupa
+- [x] **Seemnefail** `seeds/ideal_cycle_rates.csv` — masinatüübi ideaalne tootmiskiirus (tükki/h), OEE Performance baas
+- [x] **Gold-kihi testid** — schema-yml not_null testid kõigil mudelitel + 2 singular-testi (`assert_oee_komponendid_0_1`: OEE komponendid vahemikus 0–1; `assert_energy_grid_le_gross`: võrgu-import ≤ kogutarve)
+- [x] **Automaatne gold-uuendus** — uus DAG `dbt_gold_refresh` (`dags/dbt_gold_refresh.py`), `*/5 * * * *`, käivitab `dbt run + test --select +gold` (ehitab ka upstream silver view'd)
+
+**Detailid ja parandused:**
+- OEE grain on **minut** ja väärtused **jooksvalt kumulatiivsed** (running window) → sile, iga minut muutuv live-OEE trend, nagu päris dashboardidel
+- Leitud ja parandatud 2 andmeviga, mille uus striimitud andmestik paljastas:
+  - **Andmeauk:** ~5-päevane auk andmetes (05-31 → 06-04) tekitas LEAD-iga võltsi mitmepäevase state-intervalli, mis paisutas run-time'i. Lahendus: augu-kaitse — >120s intervall = puuduv andmestik, ignoreeritakse (OEE + energia mudelis)
+  - **grid > consumption öösel:** proovivõtu jitter ristas 15-min integraalid → negatiivne päikese-sääst. Lahendus: `grid_import` klambritud ≤ `consumption` (füüsiline korrektsus)
+- Gold uueneb iseseisvalt Elering DAG-ist, sest OEE sõltub tehase telemeetriast, mitte elektrihinnast
+
+## Kokkuvõte
+
+Lahendus on terviklik: mõlemad sissevõtud, silver-kiht ja kogu gold-kihi KPI-komplekt (OEE, energiakulu, downtime) töötavad otsast lõpuni, testitud ja automaatselt uuenevad. Läheme edasi selle valminud lahendusega.
+
 ## Mis takistab
 
 - Praegu pole blokeerivaid probleeme.

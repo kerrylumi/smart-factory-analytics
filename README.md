@@ -50,8 +50,7 @@ Täpsem kirjeldus: [`docs/arhitektuur.md`](docs/arhitektuur.md). Jooksev edenemi
 |---------|------|--------------|------|
 | `metalfab-simulator` (Eindhoven, Level 4) | MQTT | Jah, ~5s | Masina sensorid, olekud, tükiloendurid |
 | Elering NPS API | HTTPS JSON | Jah, 15-min lahutus, ajaloolised päringuid | Elektri börsihind €/MWh (EE/FI/LV/LT) |
-| `seeds/masinad.csv` *(Sprint 3)* | dbt seed | Ei | Masinate metaandmed |
-| `seeds/toote_info.csv` *(Sprint 3)* | dbt seed | Ei | Toote metaandmed |
+| `seeds/ideal_cycle_rates.csv` | dbt seed | Ei | Masinatüübi ideaalne tootmiskiirus (tükki/h) — OEE Performance baasmäär |
 
 ## Stack
 
@@ -92,6 +91,9 @@ docker compose exec airflow-scheduler airflow backfill create \
 # 5. Käivita MQTT-poole streaming
 #    Ava http://localhost:8888 → notebooks/metalfab-streaming.ipynb → Run All
 #    (Redpanda Connect alustab faili kirjutamist data/lake/-i automaatselt)
+
+# 6. Aktiveeri gold-kihi automaatne uuendus (OEE, energia, downtime iga 5 min)
+docker compose exec airflow-scheduler airflow dags unpause dbt_gold_refresh
 ```
 
 ### Superset dashboardi taastamine backupist
@@ -166,26 +168,36 @@ Isikuandmeid andmestikus pole. Avalikud API-d (Elering NPS) ei nõua võtit.
 1. **Sissevõtt — Elering** — Airflow DAG `elering_ingest` (`@daily`) pärib Elering NPS REST API-st eelmise päeva 15-min hinnad neljale riigile ja inserdib otse `bronze.br_electricity_prices`-i `ON CONFLICT DO NOTHING` strateegiaga.
 2. **Sissevõtt — MQTT** — `metalfab-simulator` publitseerib PackML olekuid ja telemeetriat HiveMQ teemadele kujul `umh/v1/metalfab/eindhoven/{dept}/{machine}/_raw/{tag}`. Redpanda Connect parsib topic'u Bloblang-mappinguga ja kirjutab iga sõnumi eraldi JSON-faili Hive-partitioned puusse `data/lake/year=.../month=.../day=.../dept=.../machine=.../tag=.../`.
 3. **Laadimine — streaming** — Jupyteri PySpark Structured Streaming notebook (`notebooks/metalfab-streaming.ipynb`) loeb `data/lake/`-st mikrobatch-režiimis ja kirjutab JDBC kaudu `bronze.raw_factory_data` tabelisse.
-4. **Transformatsioon** — dbt projekt teisendab bronze andmed silver-kihi view'desse (`silver_electricity_prices`: UTC → Europe/Tallinn, EUR/MWh → EUR/kWh). Gold-kiht (OEE, energiakulu, downtime cost star-skeemil) on Sprint 3 töö.
-5. **Testimine** — dbt schema-yml testid kontrollivad silver-kihi võtmevälju (vt allpool).
-6. **Näidikulaud** — Superset "Tehase juhtimislaud" kuvab elektrihinna 15-min lahutusel ja päevase keskmisena. Täis-KPI komplekt (OEE, €/tükk, downtime €) tuleb pärast gold-kihi valmimist.
+4. **Transformatsioon — silver** — dbt teisendab bronze andmed silver-kihi view'desse: `silver_electricity_prices` (UTC → Europe/Tallinn, EUR/MWh → EUR/kWh) ja `silver_factory_telemetry` (tehase telemeetria long-formaadis, NULL-filter + Tallinna ajatempel).
+5. **Transformatsioon — gold** — gold-kihi star-skeemi tabelid arvutatakse masinate toorsignaalidest: **OEE** minuti kaupa jooksva kumulatiivina (`gold_oee` = Availability × Performance × Quality), **energiakulu** Eleringi reaalsete spot-hindadega (`gold_energy`, `gold_energy_per_part`) ja **seisakute jaotus** PackML olekute kaupa (`gold_downtime`). Gold uueneb automaatselt iga 5 min DAG-iga `dbt_gold_refresh`; silver on view'd, mis peegeldavad alati live bronze andmeid.
+6. **Testimine** — dbt schema-yml + singular-testid kontrollivad silver- ja gold-kihi võtmevälju ja loogikat (vt allpool).
+7. **Näidikulaud** — Superset kuvab elektrihinna 15-min lahutusel ja päevase keskmisena ning gold-kihi KPI-d: live-OEE masina kohta (minuti kaupa), €/tükk ja seisakute breakdown.
 
 ## Andmekvaliteedi testid
 
-dbt projekt (`dbt_project/models/silver/schema.yml`) kontrollib `silver_electricity_prices` mudelit:
+**Silver** (`dbt_project/models/silver/schema.yml`) — `silver_electricity_prices`:
 
 1. `ts_utc` on **not_null** ja **unique** (üks rida 15-min ajaakna kohta)
 2. `ts_eest` on **not_null** (ajavööndi teisendus ei tohi NULL-i luua)
 3. `price_eur_mwh` on **not_null**
 4. `price_eur_kwh` on **not_null** (matemaatika kontroll)
 
+`silver_factory_telemetry` — `machine`, `tag`, `value`, `ts_utc` on **not_null**.
+
+**Gold** (`dbt_project/models/gold/schema.yml`) — schema-testid kontrollivad iga OEE-mudeli (`gold_oee` + komponendid) võtmevälju `machine`, `minut` ja KPI-veerge (`availability`, `performance`, `quality`, `oee`) **not_null**, samuti `gold_downtime`, `gold_energy` ja `gold_energy_per_part` võtmevälju (`ts_utc` not_null + unique jne).
+
+**Singular-testid** (`dbt_project/tests/`) kontrollivad ärireegleid:
+- `assert_oee_komponendid_0_1.sql` — kõik OEE komponendid jäävad vahemikku 0–1
+- `assert_energy_grid_le_gross.sql` — võrgust imporditud energia ei ületa kogutarvet (füüsiline korrektsus)
+
 Testide käivitamine ja vaatamine:
 
 ```bash
-docker compose run --rm dbt -lc "dbt test --profiles-dir . --select silver"
+docker compose run --rm dbt -lc "dbt test --profiles-dir . --select silver"   # silver
+docker compose run --rm dbt -lc "dbt test --profiles-dir . --select gold"     # gold
 ```
 
-Airflow DAG `elering_ingest` käivitab samad testid pärast iga andmelaadimist (`dbt_test` task) — punase task'i puhul on testidetailid Airflow UI logides.
+Airflow käivitab testid pärast iga laadimist: `elering_ingest` testib silver-kihti, `dbt_gold_refresh` (iga 5 min) testib gold-kihti. Punase task'i puhul on testidetailid Airflow UI logides.
 
 ## Projekti struktuur
 
@@ -202,12 +214,17 @@ Airflow DAG `elering_ingest` käivitab samad testid pärast iga andmelaadimist (
 │   ├── airflow.cfg                 ← Airflow konfiguratsioon
 │   └── redpanda-connect.yaml       ← MQTT → data/lake Bloblang mapping
 ├── dags/
-│   └── elering_ingest.py           ← Elering NPS @daily DAG (ensure_schema → laadi → dbt run → test)
+│   ├── elering_ingest.py           ← Elering NPS @daily DAG (ensure_schema → laadi → dbt run → test silver)
+│   └── dbt_gold_refresh.py         ← Gold-kihi uuendus iga 5 min (dbt run + test --select +gold)
 ├── dbt_project/
 │   ├── dbt_project.yml
 │   ├── profiles.yml
 │   ├── macros/generate_schema_name.sql
-│   └── models/silver/              ← Silver view + sources + schema testid
+│   ├── seeds/ideal_cycle_rates.csv ← Masinatüübi ideaalmäär (tükki/h), OEE Performance baas
+│   ├── tests/                      ← Singular-testid (OEE 0–1, energia grid ≤ gross)
+│   └── models/
+│       ├── silver/                 ← Silver view'd (electricity + factory telemetry) + sources + testid
+│       └── gold/                   ← Gold star-skeem: OEE (4 mudelit), energia (2), downtime + testid
 ├── init/
 │   └── 01_create_schemas.sql       ← bronze/silver/gold skeemid (volume veel mountimata)
 ├── notebooks/
@@ -223,22 +240,21 @@ Airflow DAG `elering_ingest` käivitab samad testid pärast iga andmelaadimist (
 └── logs/                           ← Airflow logid (gitignore'is)
 ```
 
-## Kokkuvõte, puudused ja võimalikud edasiarendused
+## Kokkuvõte ja puudused
 
 **Kokkuvõte:**
+
 - Mõlemad sissevõtud (Elering REST + MQTT streaming) töötavad otsast lõpuni. Elering kirjutab `bronze.br_electricity_prices` tabelisse ja silver-view tarnib Superseti dashboardile; MQTT andmed jõuavad `data/lake/`-st Sparki kaudu `bronze.raw_factory_data` tabelisse.
-- dbt projekt, schema-yml testid ja Superset dashboard on käivitatavad ühe `docker compose up -d` käsuga.
-- Airflow DAG on idempotent (`ON CONFLICT DO NOTHING`), nii et backfill on ohutu.
+- `bronze.raw_factory_data` on registreeritud dbt-source'ina ja silver-view `silver_factory_telemetry` puhastab telemeetria gold-kihi jaoks.
+- Gold-kiht on valmis: OEE (Availability × Performance × Quality) arvutatakse masinate toorsignaalidest jooksva kumulatiivina minuti kaupa, energiakulu Eleringi reaalsete spot-hindadega ja seisakute jaotus PackML olekute kaupa. Kõik gold-mudelid on testitud (schema + singular testid).
+- dbt projekt, testid ja Superset dashboard on käivitatavad ühe `docker compose up -d` käsuga.
+- Orkestreerimine: `elering_ingest` (@daily) hoiab bronze + silver elektrihinna värske, `dbt_gold_refresh` (iga 5 min) hoiab gold-KPI-d värske. Mõlemad idempotentsed (`ON CONFLICT DO NOTHING`), nii et backfill on ohutu.
 
 **Puudused:**
-- Gold-kiht (OEE, energiakulu, downtime cost star-skeem) on veel kirjutamata — sealt genereeritud KPI-d puuduvad ka dashboardilt.
-- MQTT bronze-tabel `bronze.raw_factory_data` pole veel dbt-source'idesse registreeritud (`sources.yml`), seega silver-mudelid MQTT andmetele puuduvad.
-- `seeds/masinad.csv` ja `seeds/toote_info.csv` failid puuduvad (arhitektuuris kirjeldatud, kuid `dbt_project/seeds/` kataloogi pole loodud).
 
-**Mis edasi:**
-- `bronze.raw_factory_data` registreerimine dbt-source'ina + silver-mudelid MQTT andmetele (PackML olekute kestus, tükiloendurite delta jne); gold-kihi star-skeem (`fact_production`, `dim_machine`, `dim_time`, `dim_product`) ja OEE arvutus.
-- Dashboardi laiendamine tootmisjuhi täisvaatega (live OEE per masin, €/tükk graafik, downtime breakdown).
-- Kaaluda Spark notebook'i asendamist otse Redpanda Connect → PostgreSQL output'iga, mis kaotaks Spark-sõltuvuse ja võimaldaks streaming'u käivituda automaatselt koos compose stack'iga (mitte käsitsi Jupyterist).
+- Kõiki äriküsimusi ei ole dashboardil päris sellisel kujul esitatud, nagu algselt eeldada võiks — osa mõõdikuid on kättesaadav gold-kihis, kuid pole veel täielikult Superseti visualiseeritud.
+- Tootmisühiku energiakulu toote kohta (€/tükk masina lõikes) ei õnnestunud päris realiseerida, sest simulaator ei väljastanud **masinapõhist** energiatarvet — energiatarve oli saadaval ainult **summaarsena kogu tehase kohta**. Seetõttu on energiakulu arvutatud tehase tasemel, mitte üksikmasina/toote täpsusega.
+- Andmekvaliteedi kontrollid ei pruugi olla kõige tõhusamad — praegu keskenduvad need peamiselt `not_null`/`unique` ja väärtusvahemike testidele, mitte sügavamale ärireeglite valideerimisele.
 
 ## Meeskond
 
