@@ -30,14 +30,19 @@ energia as (
         sum(kw * kestus_s / 3600.0) as kwh
     from voimsus
     where kestus_s is not null
+      -- ignoreeri andmeauke: >120s intervall pole tegelik mõõtmissamm
+      and kestus_s <= 120
     group by 1, 2
 ),
 
 kwh_wide as (
     select
         plokk_utc,
-        sum(kwh) filter (where tag = 'consumption_kw') as consumption_kwh,
-        sum(kwh) filter (where tag = 'grid_import_kw') as grid_import_kwh
+        sum(kwh) filter (where tag = 'consumption_kw')                                   as consumption_kwh,
+        -- klambrime grid <= consumption: import ei saa füüsiliselt ületada tarvet
+        -- (proovivõtu jitter võib integraalid ~0.0004 kWh võrra ristata)
+        least(sum(kwh) filter (where tag = 'grid_import_kw'),
+              sum(kwh) filter (where tag = 'consumption_kw'))                            as grid_import_kwh
     from energia
     group by plokk_utc
 )

@@ -1,54 +1,45 @@
--- OEE komponent: Quality = (produced - scrap) / produced.
--- Toorsignaalid `parts_produced` ja `parts_scrap` on KUMULATIIVSED LOENDURID,
--- mis nullitakse iga töökäsu vahetusel. Seega ei tohi üle päeva lihtsalt max'i võtta:
--- tuvasta nullimised (value < lag), määra sessiooni-id kumulatiivse summaga,
--- võta iga sessiooni max ja summeeri sessioonid kokku.
+-- OEE komponent: Quality = (produced - scrap) / produced, JOOKSEV KUMULATIIVNE minuti kaupa.
+-- `parts_produced`/`parts_scrap` on kumulatiivsed loendurid → minuti juurdekasv = delta
+-- (reset = negatiivne delta → 0). Siis kumulatiivne summa algusest (running window).
+-- Hõreda andmega (paljud minutid 0 tükki) püsib kvaliteet määratud, sest kasutame
+-- jooksvaid kogusummasid; enne esimest tükki quality = 1.0. Grain: masin × minut.
 
-with flagitud as (
+with samples as (
     select
         machine,
         tag,
         ts_utc,
-        value,
-        case
-            when value < lag(value) over (partition by machine, tag order by ts_utc)
-            then 1 else 0
-        end as reset_flag
+        value - lag(value) over (partition by machine, tag order by ts_utc) as delta
     from {{ ref('silver_factory_telemetry') }}
     where tag in ('parts_produced', 'parts_scrap')
 ),
 
-sessioonid as (
-    select
-        *,
-        sum(reset_flag) over (partition by machine, tag order by ts_utc) as session_id
-    from flagitud
-),
-
-sessiooni_max as (
+per_min as (
     select
         machine,
-        tag,
-        date_trunc('day', max(ts_utc))  as paev,
-        max(value)                      as cnt
-    from sessioonid
-    group by machine, tag, session_id
+        date_trunc('minute', ts_utc)                                            as minut,
+        sum(case when tag = 'parts_produced' and delta > 0 then delta else 0 end) as produced,
+        sum(case when tag = 'parts_scrap'    and delta > 0 then delta else 0 end) as scrap
+    from samples
+    group by machine, date_trunc('minute', ts_utc)
 ),
 
-kokku as (
+cum as (
     select
         machine,
-        paev,
-        sum(cnt) filter (where tag = 'parts_produced')  as produced,
-        sum(cnt) filter (where tag = 'parts_scrap')     as scrap
-    from sessiooni_max
-    group by machine, paev
+        minut,
+        sum(produced) over (partition by machine order by minut rows unbounded preceding) as produced_cum,
+        sum(scrap)    over (partition by machine order by minut rows unbounded preceding) as scrap_cum
+    from per_min
 )
 
 select
     machine,
-    paev,
-    produced,
-    scrap,
-    (produced - scrap) / nullif(produced, 0)    as quality
-from kokku
+    minut,
+    produced_cum,
+    scrap_cum,
+    case
+        when produced_cum > 0 then (produced_cum - scrap_cum) / produced_cum
+        else 1.0
+    end as quality
+from cum

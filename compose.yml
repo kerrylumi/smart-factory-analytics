@@ -21,7 +21,7 @@ x-airflow-common: &airflow-common
     POSTGRES_USER: ${POSTGRES_USER:-praktikum}
     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-praktikum}
     POSTGRES_DB: ${POSTGRES_DB:-praktikum}
-    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-dbt-postgres==1.10.0}
+    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-dbt-postgres==1.10.0 dbt-core==1.11.11}
     AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
   volumes:
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags

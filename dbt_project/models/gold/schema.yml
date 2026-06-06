@@ -4,14 +4,14 @@ models:
   - name: gold_oee_availability
     description: >
       OEE komponent Availability = run_time / planned_time. Arvutatud toorsignaalist
-      `state` aja-kaalutult (LEAD), mitte näidete loendamisega. Grain: masin × päev.
+      `state` aja-kaalutult (LEAD), JOOKSEV KUMULATIIVNE. Grain: masin × minut.
     columns:
       - name: machine
         description: Masina ID.
         data_tests:
           - not_null
-      - name: paev
-        description: Päev (date_trunc EEST-põhiselt).
+      - name: minut
+        description: Minut (date_trunc).
         data_tests:
           - not_null
       - name: availability
@@ -21,13 +21,13 @@ models:
 
   - name: gold_oee_quality
     description: >
-      OEE komponent Quality = (produced - scrap) / produced. Loendurid `parts_produced`/
-      `parts_scrap` sessioniseeritud nullimiste järgi (kumulatiivne reset per töökäsk).
+      OEE komponent Quality = (produced - scrap) / produced. Loendurite minutipõhine
+      juurdekasv (delta), siis JOOKSEV KUMULATIIVNE. Grain: masin × minut.
     columns:
       - name: machine
         data_tests:
           - not_null
-      - name: paev
+      - name: minut
         data_tests:
           - not_null
       - name: quality
@@ -37,13 +37,13 @@ models:
 
   - name: gold_oee_performance
     description: >
-      OEE komponent Performance = produced / (run_h × ideaalmäär). Ideaalmäär seemnest
-      ideal_cycle_rates masinatüübi kaupa.
+      OEE komponent Performance = produced / (run_h × ideaalmäär), JOOKSEV KUMULATIIVNE.
+      Ideaalmäär seemnest ideal_cycle_rates masinatüübi kaupa. Grain: masin × minut.
     columns:
       - name: machine
         data_tests:
           - not_null
-      - name: paev
+      - name: minut
         data_tests:
           - not_null
       - name: performance
@@ -54,12 +54,13 @@ models:
   - name: gold_oee
     description: >
       OEE = Availability × Performance × Quality, arvutatud masinate toorsignaalidest
-      (mitte simulaatori eelarvutatud oee.* tag'idest). Grain: masin × päev.
+      (mitte simulaatori eelarvutatud oee.* tag'idest). JOOKSEV KUMULATIIVNE live-trend.
+      Grain: masin × minut.
     columns:
       - name: machine
         data_tests:
           - not_null
-      - name: paev
+      - name: minut
         data_tests:
           - not_null
       - name: availability
