@@ -290,15 +290,15 @@ services:
       - ${DATA_DIR:-./data}:/home/jovyan/data
     environment:
       - JUPYTER_TOKEN=${JUPYTER_TOKEN:-praktikum}
+      # Andmebaasi ühendus notebooki JDBC-kirjutuse jaoks (loetakse os.environ-ist)
+      - POSTGRES_HOST=${POSTGRES_HOST:-db}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_DB=${POSTGRES_DB:-praktikum}
+      - POSTGRES_USER=${POSTGRES_USER:-praktikum}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-praktikum}
     #      - PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.1,io.delta:delta-spark_2.13:4.2.0 pyspark-shell
     command: >
       start-notebook.py --ServerApp.token=${JUPYTER_TOKEN:-praktikum} --ServerApp.password='' --ServerApp.allow_origin='*' --ServerApp.allow_remote_access=True
-
-#networks:
-#  umh-network:
-#    #external: true
-#    name: deployment_umh-network
-#    driver: bridge
 
 volumes:
   pgdata:
