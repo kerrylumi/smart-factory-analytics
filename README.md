@@ -80,32 +80,42 @@ cp .env.example .env
 # 3. Käivita kõik teenused
 docker compose up -d --build
 
-# 4. Käivita Elering DAG ja tee backfill soovitud perioodile (muuda from-date ja to-date parameetreid vastavalt soovitud backfill perioodile)
+# 4. Laadi dbt seemned (ideal_cycle_rates — gold OEE Performance baasmäär)
+#    KOHUSTUSLIK enne gold-kihti: gold_oee_performance teeb ref('ideal_cycle_rates').
+#    Seeme on staatiline, nii et piisab ühest korrast. dbt run/build EI laadi seemneid.
+docker compose run --rm dbt -lc "dbt seed --profiles-dir ."
+
+# 5. Käivita Elering DAG ja tee backfill (muuda from-date/to-date oma perioodile)
 #    (Airflow 3: `airflow backfill create`, mitte enam `dags backfill`)
+#    NB! Vali periood, mis KATTUB tehase telemeetria ajaga (vt samm 6 — andmed on "praegu"),
+#    muidu gold_energy (hind × tarve INNER-join 15-min plokis) jääb tühjaks.
 docker compose exec airflow-scheduler airflow dags unpause elering_ingest
 docker compose exec airflow-scheduler airflow backfill create \
   --dag-id elering_ingest \
-  --from-date 2026-05-01 \
-  --to-date 2026-05-31 \
+  --from-date 2026-06-01 \
+  --to-date 2026-06-06 \
   --max-active-runs 1
-# 5. Käivita MQTT-poole streaming
+
+# 6. Käivita MQTT-poole streaming
 #    Ava http://localhost:8888 → notebooks/metalfab-streaming.ipynb → Run All
 #    (Redpanda Connect alustab faili kirjutamist data/lake/-i automaatselt)
+#    NB! Notebooki lugemis-glob on hard-coded jooksvale kuule (data/lake/*/month=06/...).
+#        Teises kuus muuda notebookis `month=06` vastavaks (nt month=07).
 
-# 6. Aktiveeri gold-kihi automaatne uuendus (OEE, energia, downtime iga 5 min)
+# 7. Aktiveeri gold-kihi automaatne uuendus (OEE, energia, downtime iga 5 min)
 docker compose exec airflow-scheduler airflow dags unpause dbt_gold_refresh
 ```
 
 ### Superset dashboardi taastamine backupist
 
-Dashboardi ZIP-eksport on versioneeritud repos (`superset/dashboards/elering_dashboard.zip`). Värskes keskkonnas (esimene `docker compose up` või pärast `superset-db` volume'i kustutamist) tuleb dashboard UI kaudu tagasi laadida:
+Dashboardi ZIP-eksport on versioneeritud repos (`superset/dashboards/dashboard.zip`). Värskes keskkonnas (esimene `docker compose up` või pärast `superset-db` volume'i kustutamist) tuleb dashboard UI kaudu tagasi laadida:
 
 1. Ava http://localhost:8088, logi sisse (`admin` / `admin`).
 2. Settings (paremas ülanurgas) → **Import Dashboards**.
-3. Vali fail `superset/dashboards/elering_dashboard.zip`. Kui küsitakse, sisesta `SECRET_KEY` `.env`-st (sama `SUPERSET_SECRET_KEY`, millega ZIP eksporditi).
-4. Pärast importi: **Datasets** sakil kontrolli, et `silver_electricity_prices` dataset on seotud `praktikum` andmebaasiga (ühendus `pgDuckDB`). Kui ühendust pole, lisa see: **Settings → Database Connections → + Database → PostgreSQL**, URI `postgresql://praktikum:praktikum@db:5432/praktikum`.
+3. Vali fail `superset/dashboards/dashboard.zip`. Kui küsitakse, sisesta `SECRET_KEY` `.env`-st (sama `SUPERSET_SECRET_KEY`, millega ZIP eksporditi).
+4. Pärast importi: **Datasets** sakil kontrolli, et dashboardi datasetid (`silver_electricity_prices` ning gold-KPI-d `gold_oee`, `gold_downtime`, `gold_energy` jt) on seotud `praktikum` andmebaasiga (ühendus `pgDuckDB`). Kui ühendust pole, lisa see: **Settings → Database Connections → + Database → PostgreSQL**, URI `postgresql://praktikum:praktikum@db:5432/praktikum`.
 
-**Backupi uuendamine:** kui dashboardi muudad ja muutused soovid repo'sse panna, mine **Dashboards** loendisse → kolm täppi (`⋯`) elering dashboardi real → **Export → Export as ZIP** ja kirjuta `superset/dashboards/elering_dashboard.zip` üle.
+**Backupi uuendamine:** kui dashboardi muudad ja muutused soovid repo'sse panna, mine **Dashboards** loendisse → kolm täppi (`⋯`) dashboardi real → **Export → Export as ZIP** ja kirjuta `superset/dashboards/dashboard.zip` üle.
 
 ### Teenused ja pordid
 
@@ -131,7 +141,47 @@ Dashboardi ZIP-eksport on versioneeritud repos (`superset/dashboards/elering_das
 - HiveMQ WebSocket — ws://localhost:8083
 - pgDuckDB — `postgresql://praktikum:praktikum@localhost:5432/praktikum`
 
+### Lahenduse verifitseerimine
 
+Pärast sammude 1–7 läbimist kontrolli, et iga kiht on andmetega täitunud. Käsud kihi kaupa (bronze → silver → gold):
+
+```bash
+# Bronze — Elering hinnad (peaks olema sadu ridu päeva ja riigi kohta)
+docker compose exec db psql -U praktikum -d praktikum \
+  -c "SELECT count(*) AS read, count(DISTINCT country) AS riike FROM bronze.br_electricity_prices;"
+
+# Bronze — tehase telemeetria (täitub pärast notebooki käivitamist)
+docker compose exec db psql -U praktikum -d praktikum \
+  -c "SELECT count(*) AS read, count(DISTINCT machine) AS masinaid FROM bronze.raw_factory_data;"
+
+# Silver — view'd (peegeldavad live bronze'i; tagastavad ridu kohe)
+docker compose exec db psql -U praktikum -d praktikum \
+  -c "SELECT count(*) FROM silver.silver_factory_telemetry;"
+
+# Gold — OEE (jooksev kumulatiivne minuti kaupa; uueneb iga 5 min DAG-iga)
+docker compose exec db psql -U praktikum -d praktikum \
+  -c "SELECT count(*) AS read, max(minut) AS viimane_minut FROM gold.gold_oee;"
+
+# Gold — energiakulu (TÜHI, kui Elering periood ei kattu telemeetria ajaga, vt samm 5)
+docker compose exec db psql -U praktikum -d praktikum \
+  -c "SELECT count(*), min(ts_utc), max(ts_utc) FROM gold.gold_energy;"
+
+# Gold — seisakute jaotus
+docker compose exec db psql -U praktikum -d praktikum \
+  -c "SELECT count(*) FROM gold.gold_downtime;"
+```
+
+**Oodatav tulemus:**
+- `bronze.br_electricity_prices` — ~88–96 rida päeva × riigi kohta (4 riiki).
+- `bronze.raw_factory_data` — kasvab iga Spark-mikrobatch'iga; `masinaid` > 0.
+- `gold.gold_oee` — ridu mitu (masin × minut), `viimane_minut` lähedal praegusele ajale.
+- `gold.gold_energy` — read > 0 **ainult siis**, kui Elering backfill ja telemeetria perioodid kattuvad.
+
+Kõik dbt-testid peavad olema rohelised:
+
+```bash
+docker compose run --rm dbt -lc "dbt test --profiles-dir . --select silver gold"
+```
 
 ## Saladused ja konfiguratsioon
 
@@ -231,7 +281,7 @@ Airflow käivitab testid pärast iga laadimist: `elering_ingest` testib silver-k
 │   └── metalfab-streaming.ipynb    ← PySpark Structured Streaming → bronze.raw_factory_data
 ├── superset/
 │   ├── superset_config.py
-│   └── dashboards/elering_dashboard.zip
+│   └── dashboards/dashboard.zip
 ├── metalfab-simulator/             ← Vendored MQTT andmegeneraator (Python pakett)
 ├── docs/
 │   ├── arhitektuur.md              ← Nädal 1 väljund

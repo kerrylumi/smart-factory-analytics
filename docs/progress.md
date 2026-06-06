@@ -23,7 +23,7 @@
 - Spark streaming notebook — `foreachBatch` JDBC kirjutus `bronze.raw_factory_data` tabelisse, checkpoint `./checkpoints/postgres_stream`
 - dbt projekt `dbt_project/` — sources, silver mudel, schema-yml testidega; custom `generate_schema_name` macro suunab `+schema:` väärtuse otse skeemi nimeks
 - Init SQL `init/01_create_schemas.sql` — bronze/silver/gold skeemid; volume veel kommenteeritud, DAG ise tagab CREATE IF NOT EXISTS
-- Superset compose'is — `Dockerfile.superset`, `superset/superset_config.py`, dashboard ZIP `superset/dashboards/elering_dashboard.zip`
+- Superset compose'is — `Dockerfile.superset`, `superset/superset_config.py`, dashboard ZIP `superset/dashboards/dashboard.zip`
 - `.env.example` kasutusvalmis mall, päris `.env` on `.gitignore`-s
 
 ## Järgmised sammud (Sprint 3)
@@ -65,8 +65,7 @@ Lahendus on terviklik: mõlemad sissevõtud, silver-kiht ja kogu gold-kihi KPI-k
 
 ## Mis takistab
 
-- Praegu pole blokeerivaid probleeme.
-- Sprint 3 alguses tasub kokku leppida, kas Spark notebook jääb streaming pipeline'i osaks pikemaajaliselt, või konsolideerime kogu sissevõtu Redpanda Connect'i alla (Redpanda Connect oskab ka otse Postgresisse kirjutada — eemaldaks Sparki sõltuvuse).
+- Praegu pole blokeerivaid probleeme. Lahendus on käivitatav ja verifitseeritav (vt Kontrollpunkt).
 
 ## Kontrollpunkt
 
@@ -76,37 +75,53 @@ Käsud, millega saab kontrollida, et töövoog töötab:
 # 1. Käivita stack (esmakordsel käivitusel ka --build)
 docker compose up -d
 
-# 2. Käivita Elering DAG ja tee backfill soovitud perioodile (muuda from-date ja to-date parameetreid vastavalt soovitud backfill perioodile)
-#    (Airflow 3: `airflow backfill create`)
+# 2. Laadi dbt seemned (KOHUSTUSLIK enne gold-kihti — gold_oee_performance ref'ib ideal_cycle_rates)
+docker compose run --rm dbt -lc "dbt seed --profiles-dir ."
+
+# 3. Käivita Elering DAG ja tee backfill (Airflow 3: `airflow backfill create`)
+#    NB! Vali periood, mis KATTUB telemeetria ajaga, muidu gold_energy jääb tühjaks.
 docker compose exec airflow-scheduler airflow dags unpause elering_ingest
 docker compose exec airflow-scheduler airflow backfill create \
   --dag-id elering_ingest \
-  --from-date 2026-05-01 \
-  --to-date 2026-05-31 \
+  --from-date 2026-06-01 \
+  --to-date 2026-06-06 \
   --max-active-runs 1
 
-# 3. Kontrolli, et MQTT pipeline kirjutab faile (peaks tekkima minutite jooksul)
+# 4. Kontrolli, et MQTT pipeline kirjutab faile (peaks tekkima minutite jooksul)
 find data/lake -name "*.json" | head -5
 find data/lake -name "*.json" | wc -l
 
-# 4. Kontrolli bronze tabel (Elering)
+# 5. Kontrolli bronze tabel (Elering)
 docker compose exec db psql -U praktikum -d praktikum \
   -c "SELECT count(*) AS rows, count(DISTINCT country) AS countries FROM bronze.br_electricity_prices;"
 
-# 5. Kontrolli silver view
+# 6. Kontrolli silver view
 docker compose exec db psql -U praktikum -d praktikum \
   -c "SELECT count(*), min(ts_eest), max(ts_eest) FROM silver.silver_electricity_prices;"
 
-# 6. Käivita Jupyteri notebook ja kontrolli MQTT bronze tabel
+# 7. Käivita Jupyteri notebook ja kontrolli MQTT bronze tabel
 #    http://localhost:8888  (token: praktikum) → notebooks/metalfab-streaming.ipynb → Run All
 docker compose exec db psql -U praktikum -d praktikum \
   -c "SELECT count(*), count(DISTINCT machine) FROM bronze.raw_factory_data;"
 
-# 7. Ava Superset → näidikulaud
-#    http://localhost:8088  (admin / admin)
+# 8. Aktiveeri gold-kihi DAG ja kontrolli gold-tabelid (OEE, energia, downtime)
+docker compose exec airflow-scheduler airflow dags unpause dbt_gold_refresh
+docker compose exec db psql -U praktikum -d praktikum \
+  -c "SELECT count(*) AS oee_read, max(minut) FROM gold.gold_oee;"
+docker compose exec db psql -U praktikum -d praktikum \
+  -c "SELECT count(*) AS energia_read FROM gold.gold_energy;"
+docker compose exec db psql -U praktikum -d praktikum \
+  -c "SELECT count(*) AS downtime_read FROM gold.gold_downtime;"
+
+# 9. Kontrolli, et kõik dbt-testid läbivad
+docker compose run --rm dbt -lc "dbt test --profiles-dir . --select silver gold"
+
+# 10. Ava Superset → näidikulaud
+#     http://localhost:8088  (admin / admin)
 ```
 
 **Oodatav tulemus pärast backfill'i ja MQTT pipeline'i lühiajalist tööd:**
-- `bronze.br_electricity_prices` täitub ~88–96 kirjega päeva ja riigi kohta (4 riiki); näiteks 30 päeva backfill annab ~11 000 kirjet. Silver view tagastab Eesti read EUR/MWh + EUR/kWh veerus, Superset dashboard kuvab elektrihinna ajagraafiku.
+- `bronze.br_electricity_prices` täitub ~88–96 kirjega päeva ja riigi kohta (4 riiki). Silver view tagastab Eesti read EUR/MWh + EUR/kWh veerus, Superset dashboard kuvab elektrihinna ajagraafiku.
 - `data/lake/` puus tekib esimeste minutite jooksul tuhandeid JSON-faile (simulaator 5s tsükkel × masinate ja tagide arv).
 - Pärast Spark notebook'i käivitamist täitub `bronze.raw_factory_data` esimeste batch'idega; iga uus mikrobatch lisab uusi ridu.
+- `gold.gold_oee` ja `gold.gold_downtime` täituvad pärast gold-DAG-i esimest käiku; `gold.gold_energy` saab ridu ainult siis, kui Elering ja telemeetria perioodid kattuvad.

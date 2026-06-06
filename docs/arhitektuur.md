@@ -8,7 +8,7 @@ Kuidas masinate seisuajad ja elektrihinna kõikumised mõjutavad toodangu omahin
 
  Peamised mõõdikud (KPI-d):
 - **OEE (Overall Equipment Effectiveness):** Arvutatud reaalajas masina olekute (Running, Idle, Fault) ja tükitoodangu põhjal.
-- **Tootmisühiku energiakulu (€):** Masina reaalne võimsustarbimine (kW) korrutatud börsihinnaga (€/MWh).
+- **Tootmisühiku energiakulu (€):** Võimsustarbimine (kW) korrutatud börsihinnaga (€/MWh). *Märkus: simulaator väljastab energiatarbe ainult kogu tehase tasemel (mitte masinapõhiselt), seega energiakulu arvutatakse tehase tasemel.*
 - **Seisuaja kulu (Downtime Cost):** Rahaline kaotus, mis tuleneb plaanivälisest seisakust.
 - **Tootmise tasuvuse tagantjärele analüüs:** Arvutab tagantjärele kokku summaarse rahalise kahjumi, mis tekkis tundidel, mil elektri börsihind muutis toote omahinna kõrgemaks kui kliendile lubatud müügihind. 
 
