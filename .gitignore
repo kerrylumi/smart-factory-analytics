@@ -236,3 +236,5 @@ __marimo__/
 data/
 checkpoints/
 .vscode/
+# dbt anonüümne kasutaja-ID (auto-genereeritud)
+dbt_project/.user.yml

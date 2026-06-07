@@ -111,8 +111,8 @@ docker compose exec airflow-scheduler airflow dags unpause dbt_gold_refresh
 Dashboardi ZIP-eksport on versioneeritud repos (`superset/dashboards/dashboard.zip`). Värskes keskkonnas (esimene `docker compose up` või pärast `superset-db` volume'i kustutamist) tuleb dashboard UI kaudu tagasi laadida:
 
 1. Ava http://localhost:8088, logi sisse (`admin` / `admin`).
-2. Settings (paremas ülanurgas) → **Import Dashboards**.
-3. Vali fail `superset/dashboards/dashboard.zip`. Kui küsitakse, sisesta `SECRET_KEY` `.env`-st (sama `SUPERSET_SECRET_KEY`, millega ZIP eksporditi).
+2. Ava **Dashboards** loendileht → klõpsa **import-ikooni** (paremal üleval, "+ DASHBOARD" nupu kõrval).
+3. Vali fail `superset/dashboards/dashboard.zip`. Kui import küsib andmebaasi-ühenduse parooli, sisesta pgDuckDB parool (`POSTGRES_PASSWORD` `.env`-st, vaikimisi `praktikum`).
 4. Pärast importi: **Datasets** sakil kontrolli, et dashboardi datasetid (`silver_electricity_prices` ning gold-KPI-d `gold_oee`, `gold_downtime`, `gold_energy` jt) on seotud `praktikum` andmebaasiga (ühendus `pgDuckDB`). Kui ühendust pole, lisa see: **Settings → Database Connections → + Database → PostgreSQL**, URI `postgresql://praktikum:praktikum@db:5432/praktikum`.
 
 **Backupi uuendamine:** kui dashboardi muudad ja muutused soovid repo'sse panna, mine **Dashboards** loendisse → kolm täppi (`⋯`) dashboardi real → **Export → Export as ZIP** ja kirjuta `superset/dashboards/dashboard.zip` üle.
@@ -254,7 +254,6 @@ Airflow käivitab testid pärast iga laadimist: `elering_ingest` testib silver-k
 ```
 .
 ├── README.md
-├── CLAUDE.md                       ← Juhised Claude Code'ile (kontekst, käsud, ettevaatusabinõud)
 ├── compose.yml                     ← Kõikide teenuste orkestratsioon
 ├── Dockerfile.dbt                  ← dbt-postgres 1.10 image
 ├── Dockerfile.superset             ← Superset 6.0 + psycopg2-binary
@@ -276,7 +275,7 @@ Airflow käivitab testid pärast iga laadimist: `elering_ingest` testib silver-k
 │       ├── silver/                 ← Silver view'd (electricity + factory telemetry) + sources + testid
 │       └── gold/                   ← Gold star-skeem: OEE (4 mudelit), energia (2), downtime + testid
 ├── init/
-│   └── 01_create_schemas.sql       ← bronze/silver/gold skeemid (volume veel mountimata)
+│   └── 01_create_schemas.sql       ← bronze/silver/gold skeemid + raw-tabelid (jookseb värske db-volume'i esmakäivitusel)
 ├── notebooks/
 │   └── metalfab-streaming.ipynb    ← PySpark Structured Streaming → bronze.raw_factory_data
 ├── superset/
@@ -285,6 +284,7 @@ Airflow käivitab testid pärast iga laadimist: `elering_ingest` testib silver-k
 ├── metalfab-simulator/             ← Vendored MQTT andmegeneraator (Python pakett)
 ├── docs/
 │   ├── arhitektuur.md              ← Nädal 1 väljund
+│   ├── joonis.md                   ← Lihtsustatud arhitektuurijoonis
 │   └── progress.md                 ← Nädalapõhine edenemisraport
 ├── data/lake/                      ← Redpanda Connect kirjutab siia (gitignore'is)
 └── logs/                           ← Airflow logid (gitignore'is)
