@@ -26,3 +26,16 @@ CREATE TABLE IF NOT EXISTS bronze.br_electricity_prices (
     loaded_at      timestamptz   NOT NULL DEFAULT now(),
     PRIMARY KEY (country, ts_utc)
 );
+
+-- Tehase MQTT telemeetria (Spark Structured Streaming kirjutab siia JDBC kaudu).
+-- Struktuur peab vastama notebooki skeemile (notebooks/metalfab-streaming.ipynb);
+-- ilma selleta kukuks silver_factory_telemetry view loomine enne notebooki esimest
+-- mikrobatch'i (dbt run --select silver vajab tabeli olemasolu).
+CREATE TABLE IF NOT EXISTS bronze.raw_factory_data (
+    dept        text,
+    machine     text,
+    tag         text,
+    "timestamp" timestamptz,
+    topic       text,
+    value       double precision
+);

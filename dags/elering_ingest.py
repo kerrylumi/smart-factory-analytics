@@ -70,8 +70,8 @@ def _execute(sql: str, params=None):
 def ensure_schema(**context):
     """Loob bronze skeemi ja tabelid, kui need puuduvad.
 
-    Sprint 3-s asendub `init/01_create_schemas.sql` volume'iga compose.yml-s,
-    kuid praegu tagab DAG ise iseseisva töötamise.
+    Sama DDL nagu init/01_create_schemas.sql — init-skript jookseb ainult
+    värske pgdata volume'i peal, DAG tagab sama tulemuse idempotentselt.
     """
     _execute(
         """
@@ -94,6 +94,18 @@ def ensure_schema(**context):
             price_eur_mwh  numeric(10,4) NOT NULL,
             loaded_at      timestamptz   NOT NULL DEFAULT now(),
             PRIMARY KEY (country, ts_utc)
+        );
+
+        -- Tehase MQTT telemeetria (Spark kirjutab siia JDBC kaudu). Tabel peab
+        -- olemas olema enne `dbt run --select silver`, sest silver_factory_telemetry
+        -- view vajab seda — muidu kukub dbt enne notebooki esimest mikrobatch'i.
+        CREATE TABLE IF NOT EXISTS bronze.raw_factory_data (
+            dept        text,
+            machine     text,
+            tag         text,
+            "timestamp" timestamptz,
+            topic       text,
+            value       double precision
         );
         """
     )
